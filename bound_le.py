@@ -9,7 +9,7 @@ L = 1  # Domain O = [0, L]
 # Numerical parameters
 N = 1000 # Number of grid points
 K = 100 # Fourier series truncation
-R = 100  # Truncation of the real line for the Lebesgue integral
+S = 10000 # MC samples
 x = np.linspace(0, L, N) # Spatial domain grid
 x_int = x[1:-1] # Interior points
 dx = x[1] - x[0] # Mesh size
@@ -63,20 +63,17 @@ def le_schrodinger_op(xi):
     return eigsh(l_f, k=1, which='LA', return_eigenvectors=False)[0]
 
 
-# Integrands for the expectation
-def numerator_integrand(xi):
-    u = potential(xi)
-    le = le_schrodinger_op(xi)
-    gaussian = np.exp(-0.5 * np.sum(xi ** 2))
-    return le * np.exp(gaussian) * np.exp(-2 * U)
-
-def denominator_integrand(xi):
-    u = potential(xi)
-    gaussian = np.exp(-0.5 * np.sum(xi ** 2))
-    return gaussian * np.exp(-2 * u)
-
 if __name__ == "__main__":
-    xi_array = np.random.uniform(-1, 1, (K, 2))
+    les = np.zeros(S)
+    log_weights = np.zeros(S)
+    for s in range(S):
+        xi_array = np.random.uniform(-1, 1, (K, 2))
+        les[s] = le_schrodinger_op(xi_array)
+        log_weights[s] = -0.5 * np.sum(xi_array**2) - 2 * potential(xi_array)
+    log_weights -= np.max(log_weights)
+    weights = np.exp(log_weights)
+    expectation = (np.sum(weights * les)/ np.sum(weights))
+    print(expectation)
 
 
 
