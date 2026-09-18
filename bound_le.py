@@ -1,16 +1,15 @@
 import numpy as np
-import matplotlib.pyplot as plt
 from scipy.sparse import diags
 from scipy.sparse.linalg import eigsh
 
 # Physical parameters
-alpha = 20  # Bifurcation parameter
-L = 10  # Domain O = [0, L]
+alpha = 25  # Bifurcation parameter
+L = 1  # Domain O = [0, L]
 
 # Numerical parameters
 N = 1000 # Number of grid points
-K = 1  # Fourier series truncation
-R = 2 * np.sqrt(alpha)  # Truncation of the real line for the Lebesgue integral
+K = 100 # Fourier series truncation
+R = 100  # Truncation of the real line for the Lebesgue integral
 x = np.linspace(0, L, N) # Spatial domain grid
 x_int = x[1:-1] # Interior points
 dx = x[1] - x[0] # Mesh size
@@ -21,7 +20,7 @@ e_1 = np.sqrt(2.0 / L) * np.sin(np.pi * x_int / L)
 
 # Orthonormal basis for H = L^2(O; R^2)
 def e_(k):
-    return np.sqrt(2.0 / L) * np.sin(k * np.pi * x / L)
+    return np.sqrt(2.0 / L) * np.sin(k * np.pi * x_int / L)
 
 # Eigenvalues of the orthonormal basis
 def lambda_(k):
@@ -29,20 +28,23 @@ def lambda_(k):
 
 # Sample f from N(0, (-Delta)^-1) measure
 def f_mc(xi):
-    sample = np.zeros((2, len(x)))
+    sample = np.zeros((2, N - 2))
     for k in range(1, K + 1):
         sample[0] += (xi[k - 1][0] / np.sqrt(lambda_(k))) * e_(k)
         sample[1] += (xi[k - 1][1] / np.sqrt(lambda_(k))) * e_(k)
     return sample
 
-def potential(r):
-    return (
-            -alpha / (2 * lambda_1) * r ** 2
-            + 3 / (8 * L * lambda_1 ** 2) * r ** 4
-    )
+def potential(xi):
+    f = f_mc(xi)
+    f_squared = f[0]**2 + f[1]**2
+    l2_squared = 0.0
+    for k in range(1, K + 1):
+        l2_squared += (xi[k - 1][0]**2 + xi[k - 1][1]**2)/lambda_(k)
+    l4_forth = np.trapezoid(f_squared**2, x_int)
+    return -alpha / 2 * l2_squared + 1 / 4 * l4_forth
 
 
-def le_schrodinger_op(r):
+def le_schrodinger_op(xi):
     # Finite difference Laplacian
     main = -2 * np.ones(N - 2)
     off = np.ones(N - 3)
@@ -53,7 +55,8 @@ def le_schrodinger_op(r):
     ) / dx ** 2
 
     # Schrodinger operator
-    f_squared = (r ** 2 / lambda_1) * e_1 ** 2
+    f = f_mc(xi)
+    f_squared = f[0]**2 + f[1]**2
     l_f = delta + diags(alpha - f_squared, 0)
 
     # Compute the largest eigenvalue of L_f
@@ -61,33 +64,19 @@ def le_schrodinger_op(r):
 
 
 # Integrands for the expectation
-def numerator_integrand(r):
-    return le_schrodinger_op(r) * np.exp(-0.5 * r ** 2 - 2 * potential(r))* r
+def numerator_integrand(xi):
+    u = potential(xi)
+    le = le_schrodinger_op(xi)
+    gaussian = np.exp(-0.5 * np.sum(xi ** 2))
+    return le * np.exp(gaussian) * np.exp(-2 * U)
 
-def denominator_integrand(r):
-    return np.exp(-0.5 * r**2 - 2 * potential(r)) * r
+def denominator_integrand(xi):
+    u = potential(xi)
+    gaussian = np.exp(-0.5 * np.sum(xi ** 2))
+    return gaussian * np.exp(-2 * u)
 
 if __name__ == "__main__":
-    r_values = np.linspace(0, 4, 100)
+    xi_array = np.random.uniform(-1, 1, (K, 2))
 
-    lambda_values = np.array([
-        le_schrodinger_op(r) for r in r_values
-    ])
-    plt.plot(r_values, potential(r_values))
-    plt.savefig("le_schrodinger_op.png")
-    # numerator = quad(
-    #     numerator_integrand,
-    #     0,
-    #     2,
-    #     limit=200
-    # )[0]
-    #
-    # denominator = quad(
-    #     denominator_integrand,
-    #     0,
-    #     2,
-    #     limit=200
-    # )[0]
-    #
-    # expectation = numerator / denominator
-    # print(expectation)
+
+
