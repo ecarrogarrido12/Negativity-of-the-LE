@@ -1,15 +1,17 @@
 import numpy as np
 from scipy.sparse import diags
 from scipy.sparse.linalg import eigsh
+import matplotlib.pyplot as plt
+from concurrent.futures import ProcessPoolExecutor
 
 # Physical parameters
-alpha = 25  # Bifurcation parameter
+alpha = 100 # Bifurcation parameter
 L = 1  # Domain O = [0, L]
 
 # Numerical parameters
 N = 1000 # Number of grid points
-K = 100 # Fourier series truncation
-S = 10000 # MC samples
+K = 10 # Fourier series truncation
+S = 100000 # MC samples
 x = np.linspace(0, L, N) # Spatial domain grid
 x_int = x[1:-1] # Interior points
 dx = x[1] - x[0] # Mesh size
@@ -28,10 +30,16 @@ def lambda_(k):
 
 # Sample f from N(0, (-Delta)^-1) measure
 def f_mc(xi):
+    k_vals = np.arange(1, K + 1)
+    sqrt_lambda = k_vals * np.pi / L
+
+    # Pre-calculate the basis vectors e_(k) into a matrix of shape (K, N-2)
+    e_mat = np.sqrt(2.0 / L) * np.sin(np.outer(k_vals, np.pi * x_int / L))
+
+    # Scale xi by sqrt(lambda) and multiply by the basis matrix
     sample = np.zeros((2, N - 2))
-    for k in range(1, K + 1):
-        sample[0] += (xi[k - 1][0] / np.sqrt(lambda_(k))) * e_(k)
-        sample[1] += (xi[k - 1][1] / np.sqrt(lambda_(k))) * e_(k)
+    sample[0] = (xi[:, 0] / sqrt_lambda) @ e_mat
+    sample[1] = (xi[:, 1] / sqrt_lambda) @ e_mat
     return sample
 
 def potential(xi):
@@ -62,14 +70,18 @@ def le_schrodinger_op(xi):
     # Compute the largest eigenvalue of L_f
     return eigsh(l_f, k=1, which='LA', return_eigenvectors=False)[0]
 
+def one_sample(seed):
+    rng = np.random.default_rng(seed)
+    xi_array = np.random.uniform(-500, 500, (K, 2))
+    le = le_schrodinger_op(xi_array)
+    log_weight = (- 2 * potential(xi_array))
+    return le, log_weight
 
 if __name__ == "__main__":
-    les = np.zeros(S)
-    log_weights = np.zeros(S)
-    for s in range(S):
-        xi_array = np.random.uniform(-1, 1, (K, 2))
-        les[s] = le_schrodinger_op(xi_array)
-        log_weights[s] = -0.5 * np.sum(xi_array**2) - 2 * potential(xi_array)
+    seeds = np.random.SeedSequence(12345).spawn(S)
+    with ProcessPoolExecutor() as executor:
+        results = list(executor.map(one_sample, seeds))
+    les, log_weights = np.array(results).T
     log_weights -= np.max(log_weights)
     weights = np.exp(log_weights)
     expectation = (np.sum(weights * les)/ np.sum(weights))
